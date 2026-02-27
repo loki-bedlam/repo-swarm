@@ -9,7 +9,7 @@ class Config:
     """Configuration constants for the investigator."""
     
     # Claude API settings
-    CLAUDE_MODEL = "claude-opus-4-6-20260120"
+    CLAUDE_MODEL = "claude-sonnet-4-6-20260120"
     MAX_TOKENS = 6000
     
     # Valid Claude model names for validation (4.x models only)
