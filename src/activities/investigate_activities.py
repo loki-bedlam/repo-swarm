@@ -16,26 +16,48 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 @activity.defn
 async def update_repos_list() -> dict:
     """
-    Update the repos.json file by running the update_repos.py script.
-    This fetches the latest repositories from the organization and updates the list.
-    
+    Update the repos.json file by fetching repositories from GitHub or CodeCommit.
+    When CODECOMMIT_ENABLED=true, lists repos from CodeCommit via boto3.
+    Otherwise, runs the update_repos.py script for GitHub.
+
     Returns:
         Dictionary containing the update status and summary
     """
     import subprocess
     import json
-    
+
     activity.logger.info("Starting repository list update")
-    
+
+    # Check if CodeCommit is enabled
+    codecommit_enabled = os.getenv('CODECOMMIT_ENABLED', '').lower() == 'true'
+
+    if codecommit_enabled:
+        activity.logger.info("CodeCommit mode enabled, listing repositories from AWS CodeCommit")
+        return await _update_repos_from_codecommit()
+    else:
+        activity.logger.info("GitHub mode, running update_repos.py script")
+        return await _update_repos_from_github()
+
+
+async def _update_repos_from_github() -> dict:
+    """
+    Update repos.json by running the update_repos.py script for GitHub.
+
+    Returns:
+        Dictionary containing the update status and summary
+    """
+    import subprocess
+    import json
+
     try:
         # Get the path to the update_repos.py script
         script_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
             "scripts", "update_repos.py"
         )
-        
+
         activity.logger.info(f"Running update_repos.py script at: {script_path}")
-        
+
         # Run the script using the same Python interpreter
         result = subprocess.run(
             [sys.executable, script_path],
@@ -43,7 +65,7 @@ async def update_repos_list() -> dict:
             text=True,
             timeout=300  # 5 minute timeout for the update process
         )
-        
+
         if result.returncode != 0:
             error_msg = f"Update repos script failed with exit code {result.returncode}. Error: {result.stderr}"
             activity.logger.error(error_msg)
@@ -53,15 +75,15 @@ async def update_repos_list() -> dict:
                 "stdout": result.stdout,
                 "stderr": result.stderr
             }
-        
+
         # Parse the output to get summary information
         lines = result.stdout.split('\n')
         summary = {
             "status": "success",
-            "message": "Repository list updated successfully",
+            "message": "Repository list updated successfully from GitHub",
             "output": result.stdout
         }
-        
+
         # Try to extract key metrics from output
         for line in lines:
             if "Successfully fetched" in line:
@@ -74,10 +96,10 @@ async def update_repos_list() -> dict:
                 summary["new_repos"] = line
             elif "Total repositories:" in line:
                 summary["total_repos"] = line
-        
+
         activity.logger.info(f"Update repos completed: {summary.get('total_repos', 'Unknown total')}")
         return summary
-        
+
     except subprocess.TimeoutExpired:
         error_msg = "Update repos script timed out after 5 minutes"
         activity.logger.error(error_msg)
@@ -86,6 +108,107 @@ async def update_repos_list() -> dict:
         error_msg = f"Failed to run update repos script: {str(e)}"
         activity.logger.error(error_msg)
         return {"status": "failed", "error": error_msg}
+
+
+async def _update_repos_from_codecommit() -> dict:
+    """
+    Update repos.json by fetching repositories from AWS CodeCommit.
+
+    Returns:
+        Dictionary containing the update status and summary
+    """
+    import json
+    from investigator.core.git_manager import GitRepositoryManager
+    from investigator.core.logger import create_logger
+
+    try:
+        # Create a logger and GitRepositoryManager
+        logger = create_logger("codecommit_sync", "INFO")
+        git_manager = GitRepositoryManager(logger)
+
+        # List CodeCommit repositories
+        result = git_manager.list_codecommit_repositories()
+
+        if result['status'] != 'success':
+            error_msg = f"Failed to list CodeCommit repositories: {result.get('message', 'Unknown error')}"
+            activity.logger.error(error_msg)
+            return {
+                "status": "failed",
+                "error": error_msg
+            }
+
+        codecommit_repos = result['repositories']
+        activity.logger.info(f"Found {len(codecommit_repos)} CodeCommit repositories")
+
+        # Load existing repos.json
+        repos_file = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "prompts", "repos.json"
+        )
+
+        try:
+            with open(repos_file, 'r') as f:
+                repos_data = json.load(f)
+        except FileNotFoundError:
+            # Create new structure if file doesn't exist
+            repos_data = {
+                "default": "",
+                "_comment": "CodeCommit repositories",
+                "repositories": {}
+            }
+
+        existing_repos = repos_data.get("repositories", {})
+        new_repos_added = 0
+        skipped_existing = 0
+
+        # Add CodeCommit repositories to repos.json
+        for repo in codecommit_repos:
+            repo_name = repo['name']
+
+            # Skip if already exists
+            if repo_name in existing_repos:
+                skipped_existing += 1
+                continue
+
+            # Add new repository
+            existing_repos[repo_name] = {
+                "url": repo['clone_url_http'],
+                "description": repo.get('description', 'CodeCommit repository'),
+                "type": "generic"  # Default type for CodeCommit repos
+            }
+            new_repos_added += 1
+
+        # Update repos.json
+        repos_data['repositories'] = existing_repos
+
+        # Write back to file
+        with open(repos_file, 'w') as f:
+            json.dump(repos_data, f, indent=2)
+
+        summary = {
+            "status": "success",
+            "message": "Repository list updated successfully from CodeCommit",
+            "region": result['region'],
+            "total_codecommit_repos": len(codecommit_repos),
+            "new_repos_added": new_repos_added,
+            "skipped_existing": skipped_existing,
+            "total_repos_in_json": len(existing_repos)
+        }
+
+        activity.logger.info(
+            f"CodeCommit sync completed: {new_repos_added} new repos added, "
+            f"{skipped_existing} already existed, total: {len(existing_repos)}"
+        )
+
+        return summary
+
+    except Exception as e:
+        error_msg = f"Failed to update repos from CodeCommit: {str(e)}"
+        activity.logger.error(error_msg)
+        return {
+            "status": "failed",
+            "error": error_msg
+        }
 
 @activity.defn
 async def read_repos_config() -> dict:

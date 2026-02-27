@@ -11,13 +11,30 @@ from .utils import Utils
 
 class GitRepositoryManager:
     """Handles Git repository operations."""
-    
+
     def __init__(self, logger):
         self.logger = logger
         self.github_token = os.getenv('GITHUB_TOKEN')
+        self.codecommit_username = os.getenv('CODECOMMIT_USERNAME')
+        self.codecommit_password = os.getenv('CODECOMMIT_PASSWORD')
+
         if self.github_token:
             self.logger.debug("GitHub token found in environment")
+        if self.codecommit_username and self.codecommit_password:
+            self.logger.debug("CodeCommit credentials found in environment")
     
+    def _is_codecommit_url(self, url: str) -> bool:
+        """
+        Check if a URL is a CodeCommit repository URL.
+
+        Args:
+            url: Repository URL to check
+
+        Returns:
+            True if URL is a CodeCommit URL, False otherwise
+        """
+        return 'git-codecommit' in url and 'amazonaws.com' in url
+
     def _sanitize_url_for_logging(self, url: str) -> str:
         """
         Remove sensitive information from URLs for safe logging.
@@ -80,52 +97,76 @@ class GitRepositoryManager:
     
     def _add_authentication(self, repo_location: str) -> str:
         """
-        Add GitHub token authentication to repository URL if available.
-        
+        Add authentication to repository URL if available (GitHub or CodeCommit).
+
         Args:
             repo_location: Original repository URL
-            
+
         Returns:
             Repository URL with authentication added if applicable
         """
         # Only process URLs, not local paths
         if not repo_location.startswith(('http://', 'https://')):
             return repo_location
-        
-        # Only add token for GitHub repositories
-        if 'github.com' not in repo_location:
-            return repo_location
-        
-        # If no token available, return original URL
-        if not self.github_token:
-            return repo_location
-        
+
         # Parse the URL
         parsed = urlparse(repo_location)
-        
+
         # If authentication already exists, don't override
         if parsed.username:
             self.logger.debug("Authentication already present in URL, not overriding")
             return repo_location
-        
-        # Add token authentication
-        # GitHub accepts the token as username with no password
-        auth_netloc = f"{self.github_token}@{parsed.hostname}"
-        if parsed.port:
-            auth_netloc += f":{parsed.port}"
-        
-        # Reconstruct the URL with authentication
-        auth_url = urlunparse((
-            parsed.scheme,
-            auth_netloc,
-            parsed.path,
-            parsed.params,
-            parsed.query,
-            parsed.fragment
-        ))
-        
-        self.logger.debug("Added GitHub token authentication to repository URL")
-        return auth_url
+
+        # Handle CodeCommit repositories
+        if self._is_codecommit_url(repo_location):
+            if not self.codecommit_username or not self.codecommit_password:
+                self.logger.warning("CodeCommit URL detected but credentials not available")
+                return repo_location
+
+            # Add CodeCommit HTTPS Git credentials
+            auth_netloc = f"{self.codecommit_username}:{self.codecommit_password}@{parsed.hostname}"
+            if parsed.port:
+                auth_netloc += f":{parsed.port}"
+
+            # Reconstruct the URL with authentication
+            auth_url = urlunparse((
+                parsed.scheme,
+                auth_netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment
+            ))
+
+            self.logger.debug("Added CodeCommit HTTPS authentication to repository URL")
+            return auth_url
+
+        # Handle GitHub repositories
+        if 'github.com' in repo_location:
+            if not self.github_token:
+                return repo_location
+
+            # Add token authentication
+            # GitHub accepts the token as username with no password
+            auth_netloc = f"{self.github_token}@{parsed.hostname}"
+            if parsed.port:
+                auth_netloc += f":{parsed.port}"
+
+            # Reconstruct the URL with authentication
+            auth_url = urlunparse((
+                parsed.scheme,
+                auth_netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment
+            ))
+
+            self.logger.debug("Added GitHub token authentication to repository URL")
+            return auth_url
+
+        # For other URLs, return as-is
+        return repo_location
     
     def _is_existing_repo(self, repo_dir: str) -> bool:
         """Check if a directory contains a valid Git repository."""
@@ -138,22 +179,26 @@ class GitRepositoryManager:
             import git
             repo = git.Repo(repo_dir)
             self.logger.info("Pulling latest changes from remote repository")
-            
+
             origin = repo.remotes.origin
-            
+
             # Update remote URL with authentication if needed
-            if self.github_token and 'github.com' in auth_repo_location:
-                current_url = origin.url
-                if 'github.com' in current_url and '@' not in current_url:
-                    self.logger.debug("Updating remote URL with authentication")
+            current_url = origin.url
+            if '@' not in current_url:
+                # Check if it's GitHub or CodeCommit
+                if self.github_token and 'github.com' in current_url:
+                    self.logger.debug("Updating remote URL with GitHub authentication")
                     origin.set_url(auth_repo_location)
-            
+                elif self._is_codecommit_url(current_url) and self.codecommit_username:
+                    self.logger.debug("Updating remote URL with CodeCommit authentication")
+                    origin.set_url(auth_repo_location)
+
             origin.fetch()
             origin.pull()
-            
+
             self.logger.info(f"Repository successfully updated at: {repo_dir}")
             return repo_dir
-            
+
         except Exception as e:
             # Import git to check for GitCommandError
             import git
@@ -350,35 +395,35 @@ class GitRepositoryManager:
     
     def push_with_authentication(self, repo_dir: str, branch: str = "main") -> dict:
         """
-        Push changes to remote repository with proper authentication.
-        
+        Push changes to remote repository with proper authentication (GitHub or CodeCommit).
+
         Args:
             repo_dir: Directory containing the git repository
             branch: Branch to push to (default: main)
-            
+
         Returns:
             Dictionary with push result status and message
         """
         try:
-            # Ensure remote URL has authentication for push
-            if self.github_token:
-                # Get current remote URL
-                result = subprocess.run(
-                    ["git", "remote", "get-url", "origin"],
-                    cwd=repo_dir,
-                    capture_output=True,
-                    text=True
-                )
-                
-                if result.returncode == 0:
-                    current_url = result.stdout.strip()
-                    
-                    # Log current remote URL (sanitized)
-                    safe_url = self._sanitize_url_for_logging(current_url)
-                    self.logger.info(f"Current remote URL: {safe_url}")
-                    
-                    # Add authentication if not already present
-                    if 'github.com' in current_url and '@' not in current_url:
+            # Get current remote URL
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0:
+                current_url = result.stdout.strip()
+
+                # Log current remote URL (sanitized)
+                safe_url = self._sanitize_url_for_logging(current_url)
+                self.logger.info(f"Current remote URL: {safe_url}")
+
+                # Add authentication if not already present
+                if '@' not in current_url:
+                    # Check if it's GitHub
+                    if 'github.com' in current_url and self.github_token:
                         if current_url.startswith('https://'):
                             auth_url = current_url.replace('https://', f'https://{self.github_token}@')
                             self.logger.info("Updating remote URL with GitHub token for push")
@@ -387,10 +432,20 @@ class GitRepositoryManager:
                                 cwd=repo_dir,
                                 check=True
                             )
+                    # Check if it's CodeCommit
+                    elif self._is_codecommit_url(current_url) and self.codecommit_username and self.codecommit_password:
+                        if current_url.startswith('https://'):
+                            auth_url = current_url.replace('https://', f'https://{self.codecommit_username}:{self.codecommit_password}@')
+                            self.logger.info("Updating remote URL with CodeCommit credentials for push")
+                            subprocess.run(
+                                ["git", "remote", "set-url", "origin", auth_url],
+                                cwd=repo_dir,
+                                check=True
+                            )
                     else:
-                        self.logger.info("Remote URL already has authentication or is not a GitHub HTTPS URL")
-            else:
-                self.logger.warning("No GitHub token available - push may fail for private repositories")
+                        self.logger.warning("No credentials available for this repository type")
+                else:
+                    self.logger.info("Remote URL already has authentication")
             
             # Perform the push
             push_result = subprocess.run(
@@ -595,6 +650,74 @@ class GitRepositoryManager:
                 "error": str(e)
             }
     
+    def list_codecommit_repositories(self, region: str = None) -> dict:
+        """
+        List all CodeCommit repositories in the specified AWS region.
+
+        Args:
+            region: AWS region (defaults to AWS_DEFAULT_REGION env var or us-east-1)
+
+        Returns:
+            Dictionary with status and list of repositories
+        """
+        try:
+            import boto3
+
+            # Determine region
+            aws_region = region or os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+
+            self.logger.info(f"Listing CodeCommit repositories in region {aws_region}")
+
+            # Create CodeCommit client
+            codecommit = boto3.client('codecommit', region_name=aws_region)
+
+            # List repositories
+            response = codecommit.list_repositories()
+
+            repositories = []
+            for repo_metadata in response.get('repositories', []):
+                repo_name = repo_metadata['repositoryName']
+
+                # Get detailed repository info
+                try:
+                    repo_detail = codecommit.get_repository(repositoryName=repo_name)
+                    repo_info = repo_detail['repositoryMetadata']
+
+                    repositories.append({
+                        'name': repo_name,
+                        'clone_url_http': repo_info['cloneUrlHttp'],
+                        'clone_url_ssh': repo_info.get('cloneUrlSsh', ''),
+                        'arn': repo_info.get('Arn', ''),
+                        'description': repo_info.get('repositoryDescription', ''),
+                        'created_date': repo_info.get('creationDate', ''),
+                        'last_modified_date': repo_info.get('lastModifiedDate', '')
+                    })
+                except Exception as e:
+                    self.logger.warning(f"Could not get details for repository {repo_name}: {str(e)}")
+                    # Add basic info even if details fail
+                    repositories.append({
+                        'name': repo_name,
+                        'clone_url_http': f"https://git-codecommit.{aws_region}.amazonaws.com/v1/repos/{repo_name}",
+                        'error': str(e)
+                    })
+
+            self.logger.info(f"Found {len(repositories)} CodeCommit repositories")
+
+            return {
+                "status": "success",
+                "region": aws_region,
+                "count": len(repositories),
+                "repositories": repositories
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to list CodeCommit repositories: {str(e)}")
+            return {
+                "status": "error",
+                "message": f"Failed to list CodeCommit repositories: {str(e)}",
+                "error": str(e)
+            }
+
     def _ensure_clean_directory(self, directory: str):
         """Ensure a directory is clean and ready for use."""
         if os.path.exists(directory):
