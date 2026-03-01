@@ -34,6 +34,20 @@ async def update_repos_list() -> dict:
     if codecommit_enabled:
         activity.logger.info("CodeCommit mode enabled, listing repositories from AWS CodeCommit")
         return await _update_repos_from_codecommit()
+
+    gitlab_enabled = os.getenv('GITLAB_ENABLED', '').lower() == 'true'
+    bitbucket_enabled = os.getenv('BITBUCKET_ENABLED', '').lower() == 'true'
+    azure_devops_enabled = os.getenv('AZURE_DEVOPS_ENABLED', '').lower() == 'true'
+
+    if gitlab_enabled:
+        activity.logger.info("GitLab mode enabled, listing repositories from GitLab")
+        return await _update_repos_from_gitlab()
+    elif bitbucket_enabled:
+        activity.logger.info("Bitbucket mode enabled, listing repositories from Bitbucket")
+        return await _update_repos_from_bitbucket()
+    elif azure_devops_enabled:
+        activity.logger.info("Azure DevOps mode enabled, listing repositories from Azure DevOps")
+        return await _update_repos_from_azure_devops()
     else:
         activity.logger.info("GitHub mode, running update_repos.py script")
         return await _update_repos_from_github()
@@ -204,6 +218,279 @@ async def _update_repos_from_codecommit() -> dict:
 
     except Exception as e:
         error_msg = f"Failed to update repos from CodeCommit: {str(e)}"
+        activity.logger.error(error_msg)
+        return {
+            "status": "failed",
+            "error": error_msg
+        }
+
+
+async def _update_repos_from_gitlab() -> dict:
+    """
+    Update repos.json by fetching repositories from GitLab.
+
+    Returns:
+        Dictionary containing the update status and summary
+    """
+    import json
+    from investigator.core.git_manager import GitRepositoryManager
+    from investigator.core.logger import create_logger
+
+    try:
+        logger = create_logger("gitlab_sync", "INFO")
+        git_manager = GitRepositoryManager(logger)
+
+        result = git_manager.list_gitlab_repositories()
+
+        if result['status'] != 'success':
+            error_msg = f"Failed to list GitLab repositories: {result.get('message', 'Unknown error')}"
+            activity.logger.error(error_msg)
+            return {
+                "status": "failed",
+                "error": error_msg
+            }
+
+        gitlab_repos = result['repositories']
+        activity.logger.info(f"Found {len(gitlab_repos)} GitLab repositories")
+
+        repos_file = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "prompts", "repos.json"
+        )
+
+        try:
+            with open(repos_file, 'r') as f:
+                repos_data = json.load(f)
+        except FileNotFoundError:
+            repos_data = {
+                "default": "",
+                "_comment": "GitLab repositories",
+                "repositories": {}
+            }
+
+        existing_repos = repos_data.get("repositories", {})
+        new_repos_added = 0
+        skipped_existing = 0
+
+        for repo in gitlab_repos:
+            repo_name = repo['name']
+
+            if repo_name in existing_repos:
+                skipped_existing += 1
+                continue
+
+            existing_repos[repo_name] = {
+                "url": repo['clone_url_http'],
+                "description": repo.get('description', 'GitLab repository'),
+                "type": "generic"
+            }
+            new_repos_added += 1
+
+        repos_data['repositories'] = existing_repos
+
+        with open(repos_file, 'w') as f:
+            json.dump(repos_data, f, indent=2)
+
+        summary = {
+            "status": "success",
+            "message": "Repository list updated successfully from GitLab",
+            "total_gitlab_repos": len(gitlab_repos),
+            "new_repos_added": new_repos_added,
+            "skipped_existing": skipped_existing,
+            "total_repos_in_json": len(existing_repos)
+        }
+
+        activity.logger.info(
+            f"GitLab sync completed: {new_repos_added} new repos added, "
+            f"{skipped_existing} already existed, total: {len(existing_repos)}"
+        )
+
+        return summary
+
+    except Exception as e:
+        error_msg = f"Failed to update repos from GitLab: {str(e)}"
+        activity.logger.error(error_msg)
+        return {
+            "status": "failed",
+            "error": error_msg
+        }
+
+
+async def _update_repos_from_bitbucket() -> dict:
+    """
+    Update repos.json by fetching repositories from Bitbucket.
+
+    Returns:
+        Dictionary containing the update status and summary
+    """
+    import json
+    from investigator.core.git_manager import GitRepositoryManager
+    from investigator.core.logger import create_logger
+
+    try:
+        logger = create_logger("bitbucket_sync", "INFO")
+        git_manager = GitRepositoryManager(logger)
+
+        result = git_manager.list_bitbucket_repositories()
+
+        if result['status'] != 'success':
+            error_msg = f"Failed to list Bitbucket repositories: {result.get('message', 'Unknown error')}"
+            activity.logger.error(error_msg)
+            return {
+                "status": "failed",
+                "error": error_msg
+            }
+
+        bitbucket_repos = result['repositories']
+        activity.logger.info(f"Found {len(bitbucket_repos)} Bitbucket repositories")
+
+        repos_file = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "prompts", "repos.json"
+        )
+
+        try:
+            with open(repos_file, 'r') as f:
+                repos_data = json.load(f)
+        except FileNotFoundError:
+            repos_data = {
+                "default": "",
+                "_comment": "Bitbucket repositories",
+                "repositories": {}
+            }
+
+        existing_repos = repos_data.get("repositories", {})
+        new_repos_added = 0
+        skipped_existing = 0
+
+        for repo in bitbucket_repos:
+            repo_name = repo['name']
+
+            if repo_name in existing_repos:
+                skipped_existing += 1
+                continue
+
+            existing_repos[repo_name] = {
+                "url": repo['clone_url_http'],
+                "description": repo.get('description', 'Bitbucket repository'),
+                "type": "generic"
+            }
+            new_repos_added += 1
+
+        repos_data['repositories'] = existing_repos
+
+        with open(repos_file, 'w') as f:
+            json.dump(repos_data, f, indent=2)
+
+        summary = {
+            "status": "success",
+            "message": "Repository list updated successfully from Bitbucket",
+            "total_bitbucket_repos": len(bitbucket_repos),
+            "new_repos_added": new_repos_added,
+            "skipped_existing": skipped_existing,
+            "total_repos_in_json": len(existing_repos)
+        }
+
+        activity.logger.info(
+            f"Bitbucket sync completed: {new_repos_added} new repos added, "
+            f"{skipped_existing} already existed, total: {len(existing_repos)}"
+        )
+
+        return summary
+
+    except Exception as e:
+        error_msg = f"Failed to update repos from Bitbucket: {str(e)}"
+        activity.logger.error(error_msg)
+        return {
+            "status": "failed",
+            "error": error_msg
+        }
+
+
+async def _update_repos_from_azure_devops() -> dict:
+    """
+    Update repos.json by fetching repositories from Azure DevOps.
+
+    Returns:
+        Dictionary containing the update status and summary
+    """
+    import json
+    from investigator.core.git_manager import GitRepositoryManager
+    from investigator.core.logger import create_logger
+
+    try:
+        logger = create_logger("azure_devops_sync", "INFO")
+        git_manager = GitRepositoryManager(logger)
+
+        result = git_manager.list_azure_devops_repositories()
+
+        if result['status'] != 'success':
+            error_msg = f"Failed to list Azure DevOps repositories: {result.get('message', 'Unknown error')}"
+            activity.logger.error(error_msg)
+            return {
+                "status": "failed",
+                "error": error_msg
+            }
+
+        azure_repos = result['repositories']
+        activity.logger.info(f"Found {len(azure_repos)} Azure DevOps repositories")
+
+        repos_file = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "prompts", "repos.json"
+        )
+
+        try:
+            with open(repos_file, 'r') as f:
+                repos_data = json.load(f)
+        except FileNotFoundError:
+            repos_data = {
+                "default": "",
+                "_comment": "Azure DevOps repositories",
+                "repositories": {}
+            }
+
+        existing_repos = repos_data.get("repositories", {})
+        new_repos_added = 0
+        skipped_existing = 0
+
+        for repo in azure_repos:
+            repo_name = repo['name']
+
+            if repo_name in existing_repos:
+                skipped_existing += 1
+                continue
+
+            existing_repos[repo_name] = {
+                "url": repo['clone_url_http'],
+                "description": repo.get('description', 'Azure DevOps repository'),
+                "type": "generic"
+            }
+            new_repos_added += 1
+
+        repos_data['repositories'] = existing_repos
+
+        with open(repos_file, 'w') as f:
+            json.dump(repos_data, f, indent=2)
+
+        summary = {
+            "status": "success",
+            "message": "Repository list updated successfully from Azure DevOps",
+            "total_azure_devops_repos": len(azure_repos),
+            "new_repos_added": new_repos_added,
+            "skipped_existing": skipped_existing,
+            "total_repos_in_json": len(existing_repos)
+        }
+
+        activity.logger.info(
+            f"Azure DevOps sync completed: {new_repos_added} new repos added, "
+            f"{skipped_existing} already existed, total: {len(existing_repos)}"
+        )
+
+        return summary
+
+    except Exception as e:
+        error_msg = f"Failed to update repos from Azure DevOps: {str(e)}"
         activity.logger.error(error_msg)
         return {
             "status": "failed",
