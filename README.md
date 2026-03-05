@@ -1,41 +1,67 @@
-# RepoSwarm🤖
+# 🤖 RepoSwarm
 
-> **📦 This repository was previously `loki-bedlam/repo-swarm` and has been moved to the [RepoSwarm organization](https://github.com/reposwarm). Old URLs redirect automatically.**
-![RepoSwarm](RepoSwarm1.jpg)
+<p align="center">
+  <img src="assets/banner-nodes.png" alt="RepoSwarm - Multi-Repo Architecture Discovery" width="100%">
+</p>
 
-🎬 **Architecture Overview (click to play)**  
-[![▶ Watch](https://img.youtube.com/vi/rOMf9xvpgtc/hqdefault.jpg)](https://www.youtube.com/watch?v=rOMf9xvpgtc)
+<p align="center">
+  <strong>AI-powered multi-repo architecture discovery platform</strong>
+</p>
 
-RepoSwarm is an AI powered multi-repo architecture discovery platform that generates its output in a specialized output repository that you can use for agent context.
+<p align="center">
+  <a href="https://github.com/reposwarm/reposwarm/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-PolyForm_NC-blue.svg?style=for-the-badge" alt="License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.12+"></a>
+  <a href="https://www.youtube.com/watch?v=rOMf9xvpgtc"><img src="https://img.shields.io/badge/Demo-YouTube-red.svg?style=for-the-badge&logo=youtube" alt="YouTube Demo"></a>
+</p>
 
-see example results repo at  [repo-swarm-sample-results-hub](https://github.com/royosherove/repo-swarm-sample-results-hub). 
+<p align="center">
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#how-it-works">How It Works</a> •
+  <a href="#configuration">Configuration</a> •
+  <a href="#related-projects">Ecosystem</a> •
+  <a href="#contributing">Contributing</a>
+</p>
 
-## Credits
-RepoSwarm was born out of a hackathon we ran at Verbit, in which our team, comprised of [Moshe](https://github.com/mosher), [Idan](https://github.com/Idandos) and [Roy](https://github.com/royosherove) created this project together. 
+> **📦 Previously `loki-bedlam/repo-swarm`. Moved to the [RepoSwarm organization](https://github.com/reposwarm). Old URLs redirect automatically.**
 
-## What's This For?
+---
 
-RepoSwarm is an intelligent agentic-like engine that:
+## What is RepoSwarm?
 
-- 🔍 Analyzes GitHub repositories using Claude Code SDK
-- 📝 Generates standardized `.arch.md` architecture files  
-- 🔄 Runs daily via Temporal workflows on repos with new commits
-- 💾 Caches results to avoid redundant analysis
-- Writes the results into a results repository that you configure
+RepoSwarm is an intelligent agentic engine that **automatically analyzes your entire codebase portfolio** and generates standardized architecture documentation. Point it at your GitHub repos and get back clean, structured `.arch.md` files — perfect as AI agent context, onboarding docs, or architecture reviews.
 
-📋 **See it in action**: Check out [RepoSwarm's self-analysis report](https://github.com/royosherove/repo-swarm-sample-results-hub/blob/main/repo-swarm.arch.md) - an example of RepoSwarm investigating its own codebase!
+<p align="center">
+  <img src="assets/banner-swarm.png" alt="RepoSwarm Agents" width="80%">
+</p>
+
+### ✨ Key Features
+
+- 🔍 **AI-Powered Analysis** — Uses Claude Code SDK to deeply understand codebases
+- 📝 **Standardized Output** — Generates consistent `.arch.md` architecture files
+- 🔄 **Incremental Updates** — Daily Temporal workflows only re-analyze repos with new commits
+- 💾 **Smart Caching** — DynamoDB or file-based caching avoids redundant analysis
+- 🎯 **Type-Aware Prompts** — Specialized analysis for backend, frontend, mobile, infra, and libraries
+- 📦 **Results Hub** — All architecture docs committed to a centralized results repository
+
+### 📋 See It In Action
+
+Check out [RepoSwarm's self-analysis report](https://github.com/royosherove/repo-swarm-sample-results-hub/blob/main/repo-swarm.arch.md) — RepoSwarm investigating its own codebase!
+
+🎬 **Architecture Overview (click to play)**
+
+[![▶ Watch on YouTube](https://img.youtube.com/vi/rOMf9xvpgtc/hqdefault.jpg)](https://www.youtube.com/watch?v=rOMf9xvpgtc)
+
+---
 
 ## How It Works
 
-RepoSwarm runs as a Temporal workflow that automatically processes repositories and feeds  a configured targer repository.
-
 ```mermaid
 graph TB
-    A[Your Repositories] -->|New commits detected| B[repo-swarm]
-    B -->|Temporal Workflow<br/>Daily execution| C[Clone & Analyze]
-    C -->|AI Analysis<br/>using Claude| D[Generate .arch.md]
-    D -->|Cache in DynamoDB or file system| E[Store Results]
-    E -->|Auto-commit| F[Results Repository]
+    A[Your Repositories] -->|New commits detected| B[RepoSwarm Engine]
+    B -->|Temporal Workflow| C[Clone & Analyze]
+    C -->|Claude AI Analysis| D[Generate .arch.md]
+    D -->|Cache in DynamoDB| E[Store Results]
+    E -->|Auto-commit| F[Results Hub Repository]
     F -->|Query with AI| G[Reports & Insights]
     
     style A fill:#e1f5fe,color:#000
@@ -44,8 +70,18 @@ graph TB
     style G fill:#e8f5e8,color:#000
 ```
 
-🔗 **Analysis prompts**: [prompts/shared](prompts/shared) - The AI prompts used to understand your codebases
-🏗️ **Generated docs**: [repo-swarm-sample-results-hub](https://github.com/royosherove/repo-swarm-sample-results-hub) - Where the `.arch.md` files end up
+**Workflow Pipeline:**
+
+1. **Cache Check** → Query DynamoDB to see if repo was already analyzed
+2. **Clone** → Clone the repository to temporary storage
+3. **Type Detection** → Determine if it's backend, frontend, mobile, etc.
+4. **Structure Analysis** → Build a tree of files and directories
+5. **Prompt Selection** → Choose analysis prompts based on repo type
+6. **AI Analysis** → Send prompts + code context to Claude
+7. **Result Storage** → Save results and generate markdown files
+8. **Cleanup** → Remove temporary files
+
+---
 
 ## Quick Start
 
@@ -56,80 +92,49 @@ graph TB
 
 ### Installation
 
-**Install mise** (tool version manager):
-
 ```bash
-# macOS
-brew install mise
+# Install mise (tool version manager)
+brew install mise        # macOS
+# or: curl https://mise.run | sh   # Linux/WSL
 
-# Linux/WSL
-curl https://mise.run | sh
-```
+# Clone and setup
+git clone https://github.com/reposwarm/reposwarm.git
+cd reposwarm
 
-**🚀 Run the setup wizard** (recommended):
-
-```bash
-# Interactive setup wizard - sets up everything automatically
+# 🚀 Interactive setup wizard (recommended)
 mise get-started
 ```
 
-This wizard will:
-- ✅ Create your `.env.local` file
-- ✅ Configure your Claude API key
-- ✅ Set up GitHub integration (optional)
-- ✅ Configure Architecture Hub repository
-- ✅ Set up git user details
+The wizard configures your Claude API key, GitHub integration, and architecture hub repository.
 
-**Manual setup** (alternative):
+<details>
+<summary><strong>Manual setup</strong></summary>
 
 ```bash
-# Copy local environment template
 cp env.local.example .env.local
-
-# Edit .env.local with your Claude API key
-# ANTHROPIC_API_KEY=your_key_here
-```
-
-**Install dependencies**:
-
-```bash
+# Edit .env.local with your ANTHROPIC_API_KEY
 mise install
 mise run dev-dependencies
 ```
+</details>
 
-### Running RepoSwarm
-
-#### Recommended: Full Local Testing
+### Running
 
 ```bash
-# Analyze repositories and generate .arch.md files
-# Uses file-based storage (no AWS required)
+# Analyze all configured repositories
 mise investigate-all
-```
 
-This command:
-
-- ✅ Loads configuration from `.env.local`
-- ✅ Uses file-based storage (no DynamoDB required)
-- ✅ Automatically starts Temporal server and worker
-- ✅ Analyzes repositories from `src/prompts/repos.json`
-- ✅ Stores `.arch.md` files in `temp/` directory
-
-#### Test Single Repository
-
-```bash
-# Test a specific repository
+# Analyze a single repository
 mise investigate-one https://github.com/user/repo
-
-# Or use predefined repos
-mise investigate-one hello-world
 ```
+
+---
 
 ## Configuration
 
 ### Adding Repositories
 
-Edit `prompts/repos.json` to add repositories for analysis:
+Edit `prompts/repos.json`:
 
 ```json
 {
@@ -140,7 +145,7 @@ Edit `prompts/repos.json` to add repositories for analysis:
       "description": "Main API service"
     },
     "my-frontend": {
-      "url": "https://github.com/org/my-frontend", 
+      "url": "https://github.com/org/my-frontend",
       "type": "frontend",
       "description": "React web app"
     }
@@ -148,180 +153,117 @@ Edit `prompts/repos.json` to add repositories for analysis:
 }
 ```
 
-### Customizing Analysis Prompts
+### Analysis Prompt Types
 
-RepoSwarm uses specialized prompts for different repository types:
+| Type | Focus | Prompts |
+|------|-------|---------|
+| 🔧 **Backend** | APIs, databases, services | [`prompts/backend/`](prompts/backend/) |
+| 🎨 **Frontend** | Components, routing, state | [`prompts/frontend/`](prompts/frontend/) |
+| 📱 **Mobile** | UI, device features, offline | [`prompts/mobile/`](prompts/mobile/) |
+| 📚 **Libraries** | API surface, internals | [`prompts/libraries/`](prompts/libraries/) |
+| ☁️ **Infrastructure** | Resources, deployments | [`prompts/infra-as-code/`](prompts/infra-as-code/) |
+| 🔗 **Shared** | Security, auth, monitoring | [`prompts/shared/`](prompts/shared/) |
 
-- 🔧 **Backend**: APIs, databases, services → [prompts/backend/](prompts/backend/)
-- 🎨 **Frontend**: Components, routing, state → [prompts/frontend/](prompts/frontend/)
-- 📱 **Mobile**: UI, device features, offline → [prompts/mobile/](prompts/mobile/)
-- 📚 **Libraries**: API surface, internals → [prompts/libraries/](prompts/libraries/)
-- ☁️ **Infrastructure**: Resources, deployments → [prompts/infra-as-code/](prompts/infra-as-code/)
-- 🔗 **Shared**: Security, auth, monitoring → [prompts/shared/](prompts/shared/)
+---
 
-Each type has a `prompts.json` that defines which analysis steps to run.
+## Mise Tasks
 
-## Mise Task Organization
+<details>
+<summary><strong>Development</strong></summary>
 
-RepoSwarm uses a logical naming convention for all mise tasks:
-
-### Development Tasks (`dev-*`)
 ```bash
 mise dev-server          # Start Temporal server
-mise dev-dependencies      # Install Python dependencies
-mise dev-worker           # Start Temporal worker
-mise dev-client           # Run workflow client
-mise dev-hello            # Test basic workflow
-mise kill                 # Stop all Temporal processes
-mise dev-repos-list       # List available repositories
-mise dev-repos-update     # Update repository list from GitHub
+mise dev-dependencies    # Install Python dependencies
+mise dev-worker          # Start Temporal worker
+mise dev-client          # Run workflow client
+mise kill                # Stop all Temporal processes
+mise dev-repos-list      # List available repositories
+mise dev-repos-update    # Update repository list from GitHub
 ```
+</details>
 
-### Investigation Tasks (`investigate-*`)
-```bash
-mise investigate-all      # Analyze all repositories locally
-mise investigate-one      # Analyze single repository locally
-mise investigate-public   # Analyze public repository
-mise investigate-debug    # Analyze with detailed logging
-```
-
-### Testing Tasks (`test-*`)
-```bash
-mise verify-config        # Validate configuration and test repository access
-mise test-all             # Run complete test suite
-mise test-units           # Run unit tests only
-mise test-integration     # Run integration tests
-mise test-dynamodb        # Test DynamoDB functionality
-```
-
-### Docker Tasks (`docker-*`)
-```bash
-mise docker-dev           # Build and run for development
-mise docker-debug         # Debug with verbose logging
-mise docker-test-build    # Test Docker build process
-```
-
-### Maintenance Tasks
-```bash
-mise cleanup-temp         # Clean temporary files
-mise monitor-workflow     # Check workflow status
-```
-
-## Testing
+<details>
+<summary><strong>Investigation</strong></summary>
 
 ```bash
-# Run all tests
-mise test-all
-
-# Run unit tests only
-mise test-units
-
-# Run integration tests
-mise test-integration
+mise investigate-all     # Analyze all repositories locally
+mise investigate-one     # Analyze single repository locally
+mise investigate-public  # Analyze public repository
+mise investigate-debug   # Analyze with detailed logging
 ```
+</details>
 
-## Related Projects
+<details>
+<summary><strong>Testing</strong></summary>
 
-- 🏗️ [**repo-swarm-sample-results-hub**](https://github.com/royosherove/repo-swarm-sample-results-hub) - The centralized repository where generated `.arch.md` files are stored and queried
-- 📝 [Analysis prompts](prompts/shared/) - The AI prompts used to understand different types of codebases
+```bash
+mise verify-config       # Validate configuration
+mise test-all            # Run complete test suite
+mise test-units          # Run unit tests only
+mise test-integration    # Run integration tests
+mise test-dynamodb       # Test DynamoDB functionality
+```
+</details>
 
-## Understanding the Codebase
+<details>
+<summary><strong>Docker</strong></summary>
 
-### Key Directories
+```bash
+mise docker-dev          # Build and run for development
+mise docker-debug        # Debug with verbose logging
+mise docker-test-build   # Test Docker build process
+```
+</details>
 
-```text
-repo-swarm/
+---
+
+## Project Structure
+
+```
+reposwarm/
 ├── prompts/                 # AI analysis prompts by repo type
 │   ├── backend/            # API, database, service prompts
 │   ├── frontend/           # UI, component, routing prompts
 │   ├── mobile/             # Mobile app specific prompts
 │   ├── libraries/          # Library/API prompts
 │   ├── infra-as-code/      # Infrastructure prompts
-│   ├── shared/             # Cross-cutting concerns (auth, security, etc)
+│   ├── shared/             # Cross-cutting concerns
 │   └── repos.json          # Repository configuration
-│
 ├── src/
 │   ├── investigator/       # Core analysis engine
-│   │   ├── core/          # Main analysis logic
-│   │   └── investigator.py # Main investigator class
-│   │
+│   │   └── core/          # Main analysis logic
 │   ├── workflows/          # Temporal workflow definitions
 │   ├── activities/         # Temporal activity implementations
 │   ├── models/             # Data models and schemas
 │   └── utils/              # Storage adapters and utilities
-│
 ├── tests/                  # Unit and integration tests
-├── temp/                   # Generated .arch.md files (local development)
-└── scripts/                # Development and deployment scripts
+└── temp/                   # Generated .arch.md files (local dev)
 ```
 
-### Getting Started with Development
-
-1. **Explore the codebase**: Start with `src/investigator/core/` to understand the analysis engine
-2. **Check existing prompts**: Look at `prompts/shared/` for examples of analysis prompts
-3. **Run tests**: Use `mise test-all` to ensure everything works
-4. **Try investigations**: Use `mise investigate-one hello-world` to see the system in action
-
-### Need Help?
-
-- Check existing issues and pull requests
-- Look at the test files for usage examples
-- Review the prompts in `prompts/` for analysis patterns
+---
 
 ## Production Deployment
 
-For production deployments, you need to deploy Temporal workers that can run on company servers or your local machine. The worker connects to a Temporal server (either locally or remotely) and processes workflow tasks.
-
-### Temporal Worker Deployment
-
-**Key Concepts:**
-- **Worker**: A process that hosts workflow and activity implementations
-- **Task Queue**: Named queue where workers poll for tasks
-- **Temporal Server**: Orchestrates workflow execution and task distribution
-
-**Deployment Options:**
-1. **Local Development**: Run workers on your development machine
-2. **Company Servers**: Deploy workers to internal infrastructure
-3. **Cloud Infrastructure**: Deploy to any cloud provider (AWS, GCP, Azure, etc.)
-4. **Containerized**: Run workers in Docker containers or Kubernetes
-
-### Getting Started with Worker Deployment
+RepoSwarm uses [Temporal](https://temporal.io/) for reliable workflow orchestration.
 
 ```bash
-# Start Temporal server (local development)
+# Start Temporal server
 mise dev-server
 
-# Run worker in background
-mise dev-worker &
+# Run worker (connects to Temporal)
+TEMPORAL_SERVER_URL=your-server:7233 mise dev-worker
 
-# Trigger workflow via client
+# Trigger investigation
 mise dev-client
 
-# Monitor workflow status
+# Monitor
 mise monitor-workflow investigate-repos-workflow
 ```
 
-### Production Worker Setup
-
-For production environments:
-
-1. **Deploy Worker Image**: Containerize your worker application
-2. **Connect to Temporal Server**: Configure connection to your Temporal server
-3. **Set Task Queue**: Workers listen on specific task queues
-4. **Trigger via API**: Use Temporal client to start workflows
-
-**Example Worker Deployment:**
-```bash
-# Run worker connecting to remote Temporal server
-TEMPORAL_SERVER_URL=your-temporal-server:7233 mise dev-worker
-```
-
-### Client Integration
-
-Clients trigger workflows by connecting to the Temporal server and specifying the task queue:
+<details>
+<summary><strong>Programmatic client integration</strong></summary>
 
 ```python
-# Example client integration
 from temporalio.client import Client
 
 async def trigger_investigation():
@@ -333,113 +275,42 @@ async def trigger_investigation():
         task_queue="investigation-queue"
     )
 ```
+</details>
 
-For detailed worker deployment strategies, see the [Temporal Worker Deployments documentation](https://docs.temporal.io/production-deployment/worker-deployments).
+---
 
-### Monitoring
+## Related Projects
 
-```bash
-# Check workflow status
-mise monitor-workflow investigate-repos-workflow
+| Project | Description |
+|---------|-------------|
+| 📊 [**reposwarm-ui**](https://github.com/reposwarm/reposwarm-ui) | Next.js dashboard for browsing investigations |
+| 🔌 [**reposwarm-api**](https://github.com/reposwarm/reposwarm-api) | REST API server for repos, workflows, prompts |
+| ⌨️ [**reposwarm-cli**](https://github.com/reposwarm/reposwarm-cli) | CLI tool for humans and AI agents |
+| 📋 [**sample-results-hub**](https://github.com/royosherove/repo-swarm-sample-results-hub) | Example output — generated `.arch.md` files |
 
-# Check Temporal server status
-mise monitor-temporal
+---
 
-# View logs (local)
-tail -f temp/investigation.log
-```
+## Credits
 
-## Advanced: System Architecture
+RepoSwarm was born out of a hackathon at [Verbit](https://verbit.ai/), built by:
+- [Moshe](https://github.com/mosher)
+- [Idan](https://github.com/Idandos)  
+- [Roy](https://github.com/royosherove)
 
-### Workflow Orchestration
-
-The system uses Temporal for reliable workflow orchestration:
-
-1. **Cache Check**: Query DynamoDB to see if repo was already analyzed
-2. **Clone**: Clone the repository to temporary storage
-3. **Type Detection**: Determine if it's backend, frontend, mobile, etc.
-4. **Structure Analysis**: Build a tree of files and directories
-5. **Prompt Selection**: Choose appropriate analysis prompts based on repo type
-6. **AI Analysis**: Send prompts + code context to Claude for analysis
-7. **Result Storage**: Save results to DynamoDB and generate markdown files
-8. **Cleanup**: Remove temporary files
-
-### DynamoDB Caching
-
-Cache invalidation happens when:
-
-- Repository has new commits
-- Branch has changed
-- TTL expires (30 days)
-- Manual cache clear requested
-
-### Troubleshooting
-
-#### Common Development Issues
-
-**Temporal Server Connection**
-```bash
-# Check if Temporal server is running
-mise monitor-temporal
-
-# Start Temporal server if needed
-mise dev-server
-```
-
-**Claude API Errors**
-- Verify API key: `echo $ANTHROPIC_API_KEY | head -c 10` (should show first 10 chars)
-- Check rate limits in your Anthropic dashboard
-- Ensure you're using a valid Claude model name
-
-**Test Failures**
-```bash
-# Run specific test suites
-mise test-units              # Unit tests only
-mise test-integration        # Integration tests only
-mise test-dynamodb           # DynamoDB tests
-```
-
-**Clean Development Environment**
-```bash
-# Stop all processes
-mise kill
-
-# Clean temporary files
-mise cleanup-temp
-
-# Reset everything
-mise cleanup-temp && mise dev-dependencies
-```
+---
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make changes and add tests
-4. Ensure tests pass: `mise test-all`
+4. Run `mise test-all`
 5. Submit a pull request
-
-### Development Workflow
-
-```bash
-# Set up development environment
-mise dev-dependencies
-mise dev-server
-
-# Run tests before committing
-mise test-all
-
-# Clean up when done
-mise kill
-mise cleanup-temp
-```
 
 ---
 
-*Twin project: [repo-swarm-sample-results-hub](https://github.com/royosherove/repo-swarm-sample-results-hub) - Query and analyze the generated architecture documentation*
+## License
 
-
-# License
-This project is licensed under the Polyform Noncommercial License 1.0.0.
+This project is licensed under the [Polyform Noncommercial License 1.0.0](LICENSE).
 You may use, copy, and modify the code for non-commercial purposes only.
-For commercial licensing, please contact roy at osherove dot_com.
+For commercial licensing, contact roy at osherove dot com.
